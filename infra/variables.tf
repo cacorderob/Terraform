@@ -1,7 +1,7 @@
 variable "app_name" {
   description = "Nombre base de la aplicación"
   type        = string
-  default     = "Grupo_Colono-web"
+  default     = "Grupo_Colono-pagina"
 }
 
 variable "environment" {
