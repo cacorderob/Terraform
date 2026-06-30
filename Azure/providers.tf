@@ -17,7 +17,7 @@ terraform {
     organization = "GBM-HA-TEST"
 
     workspaces {
-      name = "NOMBRE_DEL_WORKSPACE"
+      name = "Terraform"
     }
   }
 
