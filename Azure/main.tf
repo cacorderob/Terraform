@@ -9,7 +9,7 @@
 # -------------------------------------------------------
 
 locals {
-  nombre_base = "${var.cliente}-${var.colaborador}"
+  nombre_base = lower("${var.cliente}-${var.colaborador}")
 
   tags = merge(var.tags, {
     cliente     = var.cliente
