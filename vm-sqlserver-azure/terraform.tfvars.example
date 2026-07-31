@@ -1,0 +1,48 @@
+# =============================================================
+# TERRAFORM.TFVARS.EXAMPLE
+# Ejemplo de archivo de variables — COPIA ESTE ARCHIVO como
+# terraform.tfvars y completa los valores reales.
+#
+# IMPORTANTE:
+#   - terraform.tfvars está en .gitignore y NUNCA se sube a Git
+#   - Las variables sensibles (contraseñas) se configuran en
+#     HCP Terraform como Variables Sensibles
+#   - NUNCA pongas contraseñas, tokens o secretos en este archivo
+# =============================================================
+
+# -------------------------------------------------------
+# IDENTIFICACIÓN DEL ENTORNO
+# -------------------------------------------------------
+
+resource_group_name = "rg-vm-sqlserver-prod"
+location            = "centralus"
+environment         = "production"
+project_name        = "carlos-pruebas"
+owner               = "cacordero"
+
+# -------------------------------------------------------
+# RED VIRTUAL
+# -------------------------------------------------------
+
+vnet_address_space    = "10.10.0.0/16"
+subnet_address_prefix = "10.10.1.0/24"
+
+# -------------------------------------------------------
+# MÁQUINA VIRTUAL WINDOWS
+# -------------------------------------------------------
+
+vm_size        = "Standard_B2ats_v2"
+os_disk_size_gb = 128
+
+# admin_username = "COMPLETAR_EN_HCP_TERRAFORM"   # sensitive — configurar en HCP Terraform
+# admin_password = "COMPLETAR_EN_HCP_TERRAFORM"   # sensitive — configurar en HCP Terraform
+
+# -------------------------------------------------------
+# AZURE SQL SERVER
+# -------------------------------------------------------
+
+sql_database_sku = "GP_S_Gen5_1"
+sql_max_size_gb  = 32
+
+# sql_admin_login    = "COMPLETAR_EN_HCP_TERRAFORM"   # sensitive — configurar en HCP Terraform
+# sql_admin_password = "COMPLETAR_EN_HCP_TERRAFORM"   # sensitive — configurar en HCP Terraform
