@@ -1,0 +1,64 @@
+# =============================================================
+# .CHECKOV.YAML
+# Configuración de Checkov para el módulo vm-sqlserver-azure.
+# Centraliza los checks suprimidos con justificación documentada.
+# Ref: https://www.checkov.io/2.Basics/CLI%20Command%20Reference.html
+# =============================================================
+
+framework:
+  - terraform
+
+skip-check:
+  # ── Red ──────────────────────────────────────────────────────
+  # CKV_AZURE_9: RDP público requerido para acceso administrativo
+  #   en este entorno de workshop. En producción restringir a IP corporativa.
+  - CKV_AZURE_9
+
+  # CKV_AZURE_119: IP pública en NIC requerida para RDP directo.
+  #   En producción usar Azure Bastion o VPN Gateway.
+  - CKV_AZURE_119
+
+  # ── VM ───────────────────────────────────────────────────────
+  # CKV_AZURE_50: No existen recursos azurerm_virtual_machine_extension
+  #   declarados en este proyecto. El check no aplica.
+  - CKV_AZURE_50
+
+  # ── SQL Server ───────────────────────────────────────────────
+  # CKV_AZURE_113: public_network_access requerido sin Private Endpoint.
+  #   En producción deshabilitar y usar Private Endpoint.
+  - CKV_AZURE_113
+
+  # CKV2_AZURE_45: Private Endpoint requiere Private DNS Zone,
+  #   fuera del scope de este proyecto base.
+  - CKV2_AZURE_45
+
+  # CKV2_AZURE_27: Azure AD admin requiere tenant_id/object_id del
+  #   administrador de AD, fuera del scope de este proyecto base.
+  - CKV2_AZURE_27
+
+  # CKV2_AZURE_2: Vulnerability Assessment requiere Storage Account
+  #   dedicado, fuera del scope de este proyecto base.
+  - CKV2_AZURE_2
+
+  # CKV2_AZURE_34: 0.0.0.0/0.0.0.0 es la convención oficial de Azure
+  #   para "Allow Azure Services". No representa acceso desde internet.
+  - CKV2_AZURE_34
+
+  # ── SQL Database ─────────────────────────────────────────────
+  # CKV_AZURE_224: Ledger feature es para compliance enterprise
+  #   (nonrepudiation), no requerido en este proyecto base.
+  - CKV_AZURE_224
+
+  # CKV_AZURE_229: Zone redundancy no está disponible en el SKU
+  #   GP_S_Gen5_1 Serverless. Solo aplica a Business Critical y Premium.
+  - CKV_AZURE_229
+
+  # ── Originales ───────────────────────────────────────────────
+  - CKV_AZURE_131
+  - CKV2_AZURE_1
+  - CKV2_AZURE_18
+
+quiet: true
+compact: true
+output:
+  - json

@@ -168,12 +168,8 @@ jobs:
 
           set +e
           checkov -d . \
-            --framework terraform \
-            --output json \
+            --config-file .checkov.yaml \
             --output-file-path checkov-results \
-            --quiet \
-            --compact \
-            --skip-check CKV_AZURE_131,CKV2_AZURE_1,CKV2_AZURE_18,CKV_AZURE_9,CKV_AZURE_50,CKV_AZURE_113,CKV_AZURE_119,CKV_AZURE_224,CKV_AZURE_229,CKV2_AZURE_2,CKV2_AZURE_27,CKV2_AZURE_34,CKV2_AZURE_45 \
             2>&1
           CHECKOV_EXIT=$?
           set -e
