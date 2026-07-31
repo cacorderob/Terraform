@@ -162,7 +162,9 @@ resource "azurerm_network_interface" "vm" {
 # -------------------------------------------------------
 # MÁQUINA VIRTUAL WINDOWS
 # VM con Windows Server 2022 Datacenter.
-# Tamaño: Standard_B2ats_v2 (2 vCPU, 1 GiB RAM, burstable)
+# Tamaño: Standard_B2s_v2 (2 vCPU, 4 GiB RAM, burstable)
+# NOTA: Standard_B2ats_v2 no tiene capacidad disponible en centralus.
+#       Se usa Standard_B2s_v2 como alternativa con disponibilidad garantizada.
 # Disco OS: StandardSSD_LRS (mejor que HDD, menor costo que Premium)
 # -------------------------------------------------------
 resource "azurerm_windows_virtual_machine" "main" {
@@ -257,6 +259,9 @@ resource "azurerm_mssql_server" "main" {
 # (ideal para entornos no-productivos o workloads intermitentes).
 # El cifrado Transparent Data Encryption (TDE) está habilitado
 # por defecto en todas las bases de datos Azure SQL.
+#
+# FIX: GP_S_Gen5_1 Serverless requiere min_capacity > 0.
+#      El valor mínimo permitido por Azure es 0.5 vCores.
 # -------------------------------------------------------
 resource "azurerm_mssql_database" "main" {
   name        = "db-${local.name_prefix}"
@@ -274,6 +279,10 @@ resource "azurerm_mssql_database" "main" {
   # Configuración de Auto-Pause para SKU Serverless (GP_S_*)
   # Se pausa después de 60 minutos de inactividad (mínimo permitido)
   auto_pause_delay_in_minutes = startswith(var.sql_database_sku, "GP_S_") ? 60 : -1
+
+  # Capacidad mínima de vCores cuando la DB está activa (solo Serverless GP_S_*)
+  # Valor mínimo permitido: 0.5 — requerido explícitamente por Azure API
+  min_capacity = startswith(var.sql_database_sku, "GP_S_") ? 0.5 : null
 }
 
 # -------------------------------------------------------
