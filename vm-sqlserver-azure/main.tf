@@ -162,9 +162,10 @@ resource "azurerm_network_interface" "vm" {
 # -------------------------------------------------------
 # MÁQUINA VIRTUAL WINDOWS
 # VM con Windows Server 2022 Datacenter.
-# Tamaño: Standard_B2s_v2 (2 vCPU, 4 GiB RAM, burstable)
-# NOTA: Standard_B2ats_v2 no tiene capacidad disponible en centralus.
-#       Se usa Standard_B2s_v2 como alternativa con disponibilidad garantizada.
+# Tamaño: Standard_B2ms (2 vCPU, 8 GiB RAM, burstable)
+# NOTA: Standard_B2ats_v2 y Standard_B2s_v2 no tienen capacidad disponible
+#       en centralus (verificado vía az vm list-skus).
+#       Standard_B2ms tiene disponibilidad confirmada en centralus.
 # Disco OS: StandardSSD_LRS (mejor que HDD, menor costo que Premium)
 # -------------------------------------------------------
 resource "azurerm_windows_virtual_machine" "main" {

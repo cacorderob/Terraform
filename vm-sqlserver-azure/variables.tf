@@ -100,13 +100,13 @@ variable "subnet_address_prefix" {
 # -------------------------------------------------------
 
 variable "vm_size" {
-  description = "Tamaño (SKU) de la máquina virtual Azure. Por defecto: Standard_B2s_v2 (Standard_B2ats_v2 no tiene capacidad disponible en centralus)."
+  description = "Tamaño (SKU) de la máquina virtual Azure. Por defecto: Standard_B2ms (2 vCPU, 8 GiB RAM, burstable — disponible en centralus)."
   type        = string
-  default     = "Standard_B2s_v2"
+  default     = "Standard_B2ms"
 
   validation {
     condition     = can(regex("^Standard_", var.vm_size))
-    error_message = "El tamaño de VM debe ser un SKU válido de Azure que comience con 'Standard_' (ej: Standard_B2s_v2, Standard_D2s_v3)."
+    error_message = "El tamaño de VM debe ser un SKU válido de Azure que comience con 'Standard_' (ej: Standard_B2ms, Standard_D2s_v3)."
   }
 }
 
