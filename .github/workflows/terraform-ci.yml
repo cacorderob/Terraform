@@ -1,0 +1,319 @@
+name: "Terraform CI — vm-sqlserver-azure"
+
+# -------------------------------------------------------
+# DISPARADORES DEL PIPELINE
+# Se ejecuta en PRs y pushes a main que afecten los archivos
+# del módulo vm-sqlserver-azure o el pipeline mismo.
+# -------------------------------------------------------
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "vm-sqlserver-azure/**"
+      - ".github/workflows/terraform-ci.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "vm-sqlserver-azure/**"
+      - ".github/workflows/terraform-ci.yml"
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Razón para ejecución manual"
+        required: false
+        default: "Ejecucion manual por operador"
+
+# -------------------------------------------------------
+# PERMISOS MÍNIMOS NECESARIOS
+# -------------------------------------------------------
+permissions:
+  contents: read
+  pull-requests: write
+  security-events: write
+
+# -------------------------------------------------------
+# VARIABLES DE ENTORNO GLOBALES
+# Las credenciales se inyectan desde GitHub Secrets
+# -------------------------------------------------------
+env:
+  TF_CLI_ARGS: "-no-color"
+  TF_INPUT: "false"
+  TF_WORKING_DIR: "vm-sqlserver-azure"
+
+jobs:
+  # =============================================================
+  # JOB 1: FORMATEO Y VALIDACIÓN
+  # Verifica que el código HCL está formateado y es válido
+  # =============================================================
+  terraform-fmt-validate:
+    name: "Formato y Validación"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: "Checkout del repositorio"
+        uses: actions/checkout@v4
+
+      - name: "Setup Terraform"
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.5"
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+
+      - name: "Terraform Format Check"
+        id: fmt
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          echo "## 📐 Terraform Format Check" >> $GITHUB_STEP_SUMMARY
+          if terraform fmt -check -recursive; then
+            echo "✅ El código HCL está correctamente formateado." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Hay archivos sin formatear. Ejecutar: terraform fmt -recursive" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+      - name: "Terraform Init (sin backend)"
+        id: init
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          terraform init -backend=false
+          echo "✅ Terraform init exitoso" >> $GITHUB_STEP_SUMMARY
+
+      - name: "Terraform Validate"
+        id: validate
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          echo "## ✅ Terraform Validate" >> $GITHUB_STEP_SUMMARY
+          OUTPUT=$(terraform validate -json)
+          echo "$OUTPUT" | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          if data.get('valid'):
+              print('✅ Configuracion valida: ' + data.get('format_version', ''))
+          else:
+              print('❌ Errores de validacion:')
+              for d in data.get('diagnostics', []):
+                  print(f'  - {d[\"severity\"]}: {d[\"summary\"]}')
+              sys.exit(1)
+          " >> $GITHUB_STEP_SUMMARY
+
+  # =============================================================
+  # JOB 2: TFLINT — Análisis Estático de Calidad
+  # =============================================================
+  tflint:
+    name: "TFLint — Análisis de Calidad"
+    runs-on: ubuntu-latest
+    needs: terraform-fmt-validate
+
+    steps:
+      - name: "Checkout del repositorio"
+        uses: actions/checkout@v4
+
+      - name: "Setup TFLint"
+        uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: "v0.51.1"
+
+      - name: "TFLint Init (descargar plugins)"
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: tflint --init --config=.tflint.hcl
+
+      - name: "TFLint Run"
+        id: tflint
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          echo "## 🔍 TFLint — Análisis Estático" >> $GITHUB_STEP_SUMMARY
+          set +e
+          tflint --config=.tflint.hcl --format=compact 2>&1 | tee tflint-output.txt
+          TFLINT_EXIT=$?
+          set -e
+
+          if [ $TFLINT_EXIT -eq 0 ]; then
+            echo "✅ TFLint: sin findings." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ TFLint encontró issues:" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cat tflint-output.txt >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            exit $TFLINT_EXIT
+          fi
+
+  # =============================================================
+  # JOB 3: CHECKOV — Análisis de Seguridad Estático (SAST)
+  # Detecta misconfigurations de seguridad y compliance
+  # =============================================================
+  checkov:
+    name: "Checkov — Análisis de Seguridad"
+    runs-on: ubuntu-latest
+    needs: terraform-fmt-validate
+
+    steps:
+      - name: "Checkout del repositorio"
+        uses: actions/checkout@v4
+
+      - name: "Setup Python para Checkov"
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: "Instalar Checkov"
+        run: pip install checkov --quiet
+
+      - name: "Checkov Scan"
+        id: checkov
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          echo "## 🔐 Checkov — Análisis de Seguridad" >> $GITHUB_STEP_SUMMARY
+
+          set +e
+          checkov -d . \
+            --framework terraform \
+            --output json \
+            --output-file-path checkov-results \
+            --quiet \
+            --compact \
+            --skip-check CKV_AZURE_131,CKV2_AZURE_1,CKV2_AZURE_18 \
+            2>&1
+          CHECKOV_EXIT=$?
+          set -e
+
+          # Parsear y reportar resultados
+          if [ -f "checkov-results/results_terraform.json" ]; then
+            python3 - <<'PY'
+          import json, os, sys
+
+          summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+
+          with open("checkov-results/results_terraform.json") as f:
+              data = json.load(f)
+
+          results = data.get("results", {})
+          passed  = results.get("passed_checks", []) or []
+          failed  = results.get("failed_checks", []) or []
+
+          lines = []
+          lines.append(f"| Checks pasados | ✅ {len(passed)} |")
+          lines.append(f"| Checks fallidos | {'❌' if failed else '✅'} {len(failed)} |")
+
+          if failed:
+              lines.append("")
+              lines.append("### Findings de Seguridad")
+              lines.append("| Check ID | Recurso | Descripcion |")
+              lines.append("|---|---|---|")
+              for c in failed[:10]:
+                  cid  = c.get("check_id", "")
+                  res  = c.get("resource", "")
+                  name = (c.get("check_name") or "").replace("\n", " ").strip()
+                  lines.append(f"| `{cid}` | `{res}` | {name} |")
+
+          if summary_path:
+              with open(summary_path, "a") as s:
+                  s.write("| Metrica | Valor |\n|---|---|\n")
+                  s.write("\n".join(lines) + "\n")
+          PY
+          fi
+
+          exit $CHECKOV_EXIT
+
+      - name: "Subir resultados Checkov como artefacto"
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: checkov-security-results
+          path: ${{ env.TF_WORKING_DIR }}/checkov-results/
+          retention-days: 30
+
+  # =============================================================
+  # JOB 4: TERRAFORM PLAN
+  # Ejecuta el plan en HCP Terraform (modo remoto)
+  # NO hace apply — solo muestra los cambios planificados.
+  # Requiere: TF_API_TOKEN en GitHub Secrets
+  # =============================================================
+  terraform-plan:
+    name: "Terraform Plan (Remoto)"
+    runs-on: ubuntu-latest
+    needs: [tflint, checkov]
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+
+    env:
+      ARM_CLIENT_ID:       ${{ secrets.ARM_CLIENT_ID }}
+      ARM_CLIENT_SECRET:   ${{ secrets.ARM_CLIENT_SECRET }}
+      ARM_TENANT_ID:       ${{ secrets.ARM_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+
+    steps:
+      - name: "Checkout del repositorio"
+        uses: actions/checkout@v4
+
+      - name: "Setup Terraform"
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.5"
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+
+      - name: "Terraform Init (con backend HCP)"
+        id: init
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: terraform init
+
+      - name: "Terraform Plan"
+        id: plan
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          echo "## 📋 Terraform Plan" >> $GITHUB_STEP_SUMMARY
+          echo "Ejecutando plan en HCP Terraform workspace \`vm-sqlserver-azure\`..." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          set +e
+          terraform plan -detailed-exitcode -out=tfplan 2>&1 | tee plan-output.txt
+          PLAN_EXIT=$?
+          set -e
+
+          # Exit codes: 0=sin cambios, 1=error, 2=cambios detectados
+          if [ $PLAN_EXIT -eq 0 ]; then
+            echo "✅ **Sin cambios** — la infraestructura está actualizada." >> $GITHUB_STEP_SUMMARY
+          elif [ $PLAN_EXIT -eq 2 ]; then
+            echo "ℹ️ **Cambios detectados** — revisar el plan antes de aplicar." >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            tail -50 plan-output.txt >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Error en el plan** — revisar logs." >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "> ⚠️ **Apply deshabilitado.** Para aplicar cambios, ejecutar manualmente desde [HCP Terraform](https://app.terraform.io/app/GBM-HA-TEST/workspaces/vm-sqlserver-azure)." >> $GITHUB_STEP_SUMMARY
+
+      - name: "Publicar Plan en PR"
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const planOutput = fs.readFileSync('${{ env.TF_WORKING_DIR }}/plan-output.txt', 'utf8');
+            const truncated = planOutput.length > 65000
+              ? planOutput.substring(0, 65000) + '\n\n... [truncado — ver artefacto completo]'
+              : planOutput;
+
+            const body = `## 📋 Terraform Plan — vm-sqlserver-azure
+
+            <details><summary>Mostrar plan completo</summary>
+
+            \`\`\`terraform
+            ${truncated}
+            \`\`\`
+
+            </details>
+
+            > ⚠️ **Apply deshabilitado.** Ejecutar manualmente desde [HCP Terraform](https://app.terraform.io/app/GBM-HA-TEST/workspaces/vm-sqlserver-azure).
+
+            *Workflow: \`${{ github.workflow }}\` | Run: \`${{ github.run_id }}\`*`;
+
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
