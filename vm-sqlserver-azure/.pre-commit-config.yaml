@@ -1,0 +1,101 @@
+# =============================================================
+# .PRE-COMMIT-CONFIG.YAML
+# Hooks de pre-commit para validar el código antes de cada commit.
+# Ejecuta formateo, validación, linting y análisis de seguridad
+# automáticamente al hacer git commit.
+#
+# INSTALACIÓN:
+#   pip install pre-commit checkov
+#   pre-commit install
+#
+# USO MANUAL:
+#   pre-commit run --all-files
+#
+# Documentación: https://pre-commit.com
+# =============================================================
+
+repos:
+  # -------------------------------------------------------
+  # HOOKS NATIVOS DE PRE-COMMIT
+  # Validaciones básicas de archivos y formato
+  # -------------------------------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      # Detectar archivos que terminan sin salto de línea
+      - id: end-of-file-fixer
+        name: "Corregir fin de archivo"
+      # Eliminar espacios en blanco al final de las líneas
+      - id: trailing-whitespace
+        name: "Eliminar espacios en blanco"
+      # Verificar que los YAML sean válidos
+      - id: check-yaml
+        name: "Validar YAML"
+      # Verificar que los JSON sean válidos
+      - id: check-json
+        name: "Validar JSON"
+      # Detectar merge conflicts sin resolver
+      - id: check-merge-conflict
+        name: "Detectar conflictos de merge"
+      # Detectar archivos grandes accidentales
+      - id: check-added-large-files
+        name: "Detectar archivos grandes"
+        args: ["--maxkb=1000"]
+      # Detectar claves privadas accidentales
+      - id: detect-private-key
+        name: "Detectar claves privadas"
+
+  # -------------------------------------------------------
+  # TERRAFORM — Formateo y Validación
+  # -------------------------------------------------------
+  - repo: https://github.com/antonbabenko/pre-commit-terraform
+    rev: v1.92.1
+    hooks:
+      # Formatear código Terraform automáticamente
+      - id: terraform_fmt
+        name: "Terraform: formatear código"
+
+      # Validar configuración de Terraform (sin conectar a la nube)
+      - id: terraform_validate
+        name: "Terraform: validar configuración"
+        args:
+          - --init-args=-backend=false
+
+      # Ejecutar TFLint para detectar problemas de calidad
+      - id: terraform_tflint
+        name: "Terraform: TFLint"
+        args:
+          - --args=--config=__GIT_WORKING_DIR__/.tflint.hcl
+          - --args=--minimum-failure-severity=error
+
+      # Verificar que los docs estén actualizados (opcional)
+      # - id: terraform_docs
+      #   name: "Terraform: actualizar documentación"
+
+  # -------------------------------------------------------
+  # CHECKOV — Análisis de Seguridad Estático (SAST)
+  # Detecta misconfigurations de seguridad y compliance
+  # -------------------------------------------------------
+  - repo: https://github.com/bridgecrewio/checkov
+    rev: 3.2.240
+    hooks:
+      - id: checkov
+        name: "Checkov: análisis de seguridad"
+        args:
+          - --framework=terraform
+          - --quiet
+          - --compact
+          # Suprimir checks que no aplican a este proyecto
+          - --skip-check=CKV_AZURE_131,CKV2_AZURE_1,CKV2_AZURE_18
+
+  # -------------------------------------------------------
+  # DETECT-SECRETS — Detectar secretos accidentales
+  # Previene el filtrado de contraseñas, tokens y claves
+  # -------------------------------------------------------
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        name: "Detectar secretos accidentales"
+        args: ["--baseline", ".secrets.baseline"]
+        exclude: terraform.tfvars.example
