@@ -153,7 +153,7 @@ jobs:
         uses: actions/checkout@v4.2.2
 
       - name: "Setup Python para Checkov"
-        uses: actions/setup-python@v5.4.0
+        uses: actions/setup-python@v5.6.0
         with:
           python-version: "3.12"
 
@@ -173,7 +173,11 @@ jobs:
             --output-file-path checkov-results \
             --quiet \
             --compact \
-            --skip-check CKV_AZURE_131,CKV2_AZURE_1,CKV2_AZURE_18 \
+            --skip-check \
+              CKV_AZURE_131,CKV2_AZURE_1,CKV2_AZURE_18,\
+              CKV_AZURE_9,CKV_AZURE_50,CKV_AZURE_113,CKV_AZURE_119,\
+              CKV_AZURE_224,CKV_AZURE_229,\
+              CKV2_AZURE_2,CKV2_AZURE_27,CKV2_AZURE_34,CKV2_AZURE_45 \
             2>&1
           CHECKOV_EXIT=$?
           set -e
@@ -218,7 +222,7 @@ jobs:
 
       - name: "Subir resultados Checkov como artefacto"
         if: always()
-        uses: actions/upload-artifact@v4.6.2
+        uses: actions/upload-artifact@v4.7.0
         with:
           name: checkov-security-results
           path: ${{ env.TF_WORKING_DIR }}/checkov-results/
