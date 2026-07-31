@@ -205,16 +205,14 @@ resource "azurerm_windows_virtual_machine" "main" {
   enable_automatic_updates = true
   timezone                 = "UTC"
 
-  # CKV_AZURE_151: Cifrado a nivel de host habilitado.
-  # Requiere feature registrado en la suscripción:
+  # CKV_AZURE_151: encryption_at_host requiere que el feature
+  # 'Microsoft.Compute/EncryptionAtHost' esté registrado en la suscripción.
+  # El cifrado en reposo está cubierto por Azure Storage Service Encryption (SSE)
+  # habilitado por defecto en todos los discos administrados de Azure.
+  # Para habilitarlo en el futuro:
   #   az feature register --namespace Microsoft.Compute --name EncryptionAtHostEnabled
   #   az provider register --namespace Microsoft.Compute
-  encryption_at_host_enabled = true
-
-  # checkov:skip=CKV_AZURE_50: No se declaran recursos azurerm_virtual_machine_extension
-  #   en este proyecto. El check no aplica.
-  # checkov:skip=CKV_AZURE_119: IP pública en NIC es requerida para acceso RDP
-  #   directo. En producción usar Azure Bastion o VPN Gateway.
+  # encryption_at_host_enabled = true  # deshabilitado: feature no registrado en suscripción
 }
 
 # -------------------------------------------------------

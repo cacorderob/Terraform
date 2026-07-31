@@ -53,6 +53,11 @@ skip-check:
   #   GP_S_Gen5_1 Serverless. Solo aplica a Business Critical y Premium.
   - CKV_AZURE_229
 
+  # CKV_AZURE_151: encryption_at_host_enabled requiere el feature
+  #   'Microsoft.Compute/EncryptionAtHost' registrado en la suscripción.
+  #   El cifrado en reposo está cubierto por SSE (habilitado por defecto en Azure).
+  - CKV_AZURE_151
+
   # ── Originales ───────────────────────────────────────────────
   - CKV_AZURE_131
   - CKV2_AZURE_1
