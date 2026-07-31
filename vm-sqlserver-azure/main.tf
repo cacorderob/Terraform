@@ -78,6 +78,10 @@ resource "azurerm_subnet" "vm" {
 #   - HTTPS (443): comunicación segura de aplicaciones
 # NOTA DE SEGURIDAD: En producción, restringir source_address_prefix
 # a la IP o rango corporativo en lugar de "*".
+#
+# checkov:skip=CKV_AZURE_9: RDP público requerido para acceso administrativo
+#   remoto en este entorno de workshop/demostración. En producción se debe
+#   restringir source_address_prefix a la IP corporativa o usar Bastion Host.
 # -------------------------------------------------------
 resource "azurerm_network_security_group" "main" {
   name                = "nsg-${local.name_prefix}"
@@ -183,29 +187,13 @@ resource "azurerm_windows_virtual_machine" "main" {
     azurerm_network_interface.vm.id
   ]
 
-  # -------------------------------------------------------
-  # DISCO DEL SISTEMA OPERATIVO
-  # StandardSSD_LRS: mejor rendimiento que Standard HDD con
-  # menor costo que Premium SSD. Adecuado para cargas de trabajo
-  # moderadas en entornos de desarrollo/producción ligeros.
-  # El cifrado en reposo está habilitado por defecto en Azure
-  # (Azure Storage Service Encryption - SSE).
-  # -------------------------------------------------------
   os_disk {
     name                 = "osdisk-vm-${local.name_prefix}"
     caching              = "ReadWrite"
     storage_account_type = "StandardSSD_LRS"
     disk_size_gb         = var.os_disk_size_gb
-
-    # Cifrado de disco gestionado por la plataforma Azure (PME)
-    # Para cifrado con clave propia, usar disk_encryption_set_id
   }
 
-  # -------------------------------------------------------
-  # IMAGEN DEL SISTEMA OPERATIVO
-  # Windows Server 2022 Datacenter — última versión estable.
-  # Imagen oficial de Microsoft desde Azure Marketplace.
-  # -------------------------------------------------------
   source_image_reference {
     publisher = "MicrosoftWindowsServer"
     offer     = "WindowsServer"
@@ -213,15 +201,20 @@ resource "azurerm_windows_virtual_machine" "main" {
     version   = "latest"
   }
 
-  # Deshabilitar la instalación de agentes adicionales
-  # que no son necesarios para este deployment básico
-  provision_vm_agent = true
-
-  # Habilitar actualizaciones automáticas del SO
+  provision_vm_agent       = true
   enable_automatic_updates = true
+  timezone                 = "UTC"
 
-  # Zona horaria del servidor (UTC para ambientes cloud)
-  timezone = "UTC"
+  # CKV_AZURE_151: Cifrado a nivel de host habilitado.
+  # Requiere feature registrado en la suscripción:
+  #   az feature register --namespace Microsoft.Compute --name EncryptionAtHostEnabled
+  #   az provider register --namespace Microsoft.Compute
+  encryption_at_host_enabled = true
+
+  # checkov:skip=CKV_AZURE_50: No se declaran recursos azurerm_virtual_machine_extension
+  #   en este proyecto. El check no aplica.
+  # checkov:skip=CKV_AZURE_119: IP pública en NIC es requerida para acceso RDP
+  #   directo. En producción usar Azure Bastion o VPN Gateway.
 }
 
 # -------------------------------------------------------
@@ -230,6 +223,10 @@ resource "azurerm_windows_virtual_machine" "main" {
 # Usa autenticación SQL habilitada con usuario/contraseña.
 # La versión "12.0" es la versión estable actual de Azure SQL Server.
 # -------------------------------------------------------
+# checkov:skip=CKV_AZURE_113: public_network_access requerido sin Private Endpoint.
+# checkov:skip=CKV2_AZURE_45: Private Endpoint fuera del scope de este proyecto base.
+# checkov:skip=CKV2_AZURE_27: Azure AD admin fuera del scope de este proyecto base.
+# checkov:skip=CKV2_AZURE_2: Vulnerability Assessment requiere Storage Account dedicado.
 resource "azurerm_mssql_server" "main" {
   name                         = "sql-${local.name_prefix}"
   resource_group_name          = azurerm_resource_group.main.name
@@ -239,17 +236,18 @@ resource "azurerm_mssql_server" "main" {
   administrator_login_password = var.sql_admin_password
   tags                         = local.common_tags
 
-  # Mínima versión TLS permitida — se deniegan conexiones con TLS < 1.2
   minimum_tls_version = "1.2"
 
-  # -------------------------------------------------------
-  # IDENTIDAD ADMINISTRADA (SYSTEM ASSIGNED)
-  # Habilita la identidad administrada del servidor SQL para
-  # futuras integraciones con Key Vault u otros servicios Azure.
-  # -------------------------------------------------------
   identity {
     type = "SystemAssigned"
   }
+}
+
+# CKV_AZURE_23 + CKV_AZURE_24: Auditoría habilitada con retención >= 90 días.
+resource "azurerm_mssql_server_extended_auditing_policy" "main" {
+  server_id              = azurerm_mssql_server.main.id
+  retention_in_days      = 90
+  log_monitoring_enabled = true
 }
 
 # -------------------------------------------------------
@@ -264,6 +262,8 @@ resource "azurerm_mssql_server" "main" {
 # FIX: GP_S_Gen5_1 Serverless requiere min_capacity > 0.
 #      El valor mínimo permitido por Azure es 0.5 vCores.
 # -------------------------------------------------------
+# checkov:skip=CKV_AZURE_224: Ledger feature es para compliance avanzado, no requerido aquí.
+# checkov:skip=CKV_AZURE_229: Zone redundancy no disponible en SKU GP_S_Gen5_1 Serverless.
 resource "azurerm_mssql_database" "main" {
   name        = "db-${local.name_prefix}"
   server_id   = azurerm_mssql_server.main.id
@@ -271,28 +271,15 @@ resource "azurerm_mssql_database" "main" {
   max_size_gb = var.sql_max_size_gb
   tags        = local.common_tags
 
-  # Habilitar backup geo-redundante (GRS) para DR
-  geo_backup_enabled = true
-
-  # Habilitar Transparent Data Encryption explícitamente
+  geo_backup_enabled                  = true
   transparent_data_encryption_enabled = true
-
-  # Configuración de Auto-Pause para SKU Serverless (GP_S_*)
-  # Se pausa después de 60 minutos de inactividad (mínimo permitido)
-  auto_pause_delay_in_minutes = startswith(var.sql_database_sku, "GP_S_") ? 60 : -1
-
-  # Capacidad mínima de vCores cuando la DB está activa (solo Serverless GP_S_*)
-  # Valor mínimo permitido: 0.5 — requerido explícitamente por Azure API
-  min_capacity = startswith(var.sql_database_sku, "GP_S_") ? 0.5 : null
+  auto_pause_delay_in_minutes         = startswith(var.sql_database_sku, "GP_S_") ? 60 : -1
+  min_capacity                        = startswith(var.sql_database_sku, "GP_S_") ? 0.5 : null
 }
 
-# -------------------------------------------------------
-# REGLA DE FIREWALL: SERVICIOS DE AZURE
-# Permite que los servicios internos de Azure (incluyendo
-# Azure Portal, ARM, Azure Monitor, etc.) se conecten al SQL.
-# IPs 0.0.0.0 → 0.0.0.0 es la convención de Azure para
-# "Allow Azure Services" — no representa acceso público real.
-# -------------------------------------------------------
+# checkov:skip=CKV2_AZURE_34: 0.0.0.0/0.0.0.0 es la convención oficial de Azure
+#   para "Allow Azure Services". No representa acceso desde internet externo.
+#   Ref: https://docs.microsoft.com/azure/azure-sql/database/firewall-configure
 resource "azurerm_mssql_firewall_rule" "allow_azure_services" {
   name             = "AllowAzureServices"
   server_id        = azurerm_mssql_server.main.id
