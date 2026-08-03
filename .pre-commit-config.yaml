@@ -1,0 +1,61 @@
+# ============================================================
+# .pre-commit-config.yaml
+# Hooks de pre-commit para garantizar calidad y seguridad
+# del código Terraform antes de cada commit.
+# Instalación: pip install pre-commit && pre-commit install
+# ============================================================
+
+repos:
+  # ─── Hooks generales de calidad de archivos ─────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+        name: Eliminar espacios en blanco al final de línea
+      - id: end-of-file-fixer
+        name: Asegurar salto de línea al final del archivo
+      - id: check-merge-conflict
+        name: Verificar marcadores de conflictos de merge
+      - id: check-case-conflict
+        name: Verificar conflictos de mayúsculas/minúsculas
+      - id: check-json
+        name: Validar archivos JSON
+      - id: check-yaml
+        name: Validar archivos YAML
+      - id: no-commit-to-branch
+        name: Prevenir commits directos a main
+        args: [--branch, main]
+      - id: detect-private-key
+        name: Detectar claves privadas accidentales
+
+  # ─── Hooks específicos de Terraform ─────────────────────
+  - repo: https://github.com/antonbabenko/pre-commit-terraform
+    rev: v1.92.1
+    hooks:
+      - id: terraform_fmt
+        name: Formatear código Terraform (terraform fmt)
+      - id: terraform_validate
+        name: Validar configuración Terraform (terraform validate)
+      - id: terraform_tflint
+        name: Análisis estático TFLint
+        args:
+          - --args=--config=__GIT_WORKING_DIR__/.tflint.hcl
+      - id: terraform_checkov
+        name: Escaneo de seguridad Checkov
+        args:
+          - --args=--framework terraform
+          - --args=--skip-check CKV_AZURE_130
+      - id: terraform_docs
+        name: Actualizar documentación automática
+        args:
+          - --args=--output-file README.md
+          - --args=--output-mode inject
+
+  # ─── Detección de secretos ───────────────────────────────
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        name: Detectar secretos en el código
+        args: ["--baseline", ".secrets.baseline"]
+        exclude: terraform.tfvars.example
