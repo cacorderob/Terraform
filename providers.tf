@@ -11,7 +11,7 @@
 # para colaboración segura y auditoría de cambios.
 terraform {
   cloud {
-    organization = "cacorderob"
+    organization = "GBM-HA-TEST"
 
     workspaces {
       name = "vm-sqlserver-azure"
