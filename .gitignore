@@ -1,0 +1,63 @@
+# ============================================================
+# .gitignore
+# Excluye archivos sensibles, de estado, secretos y
+# directorios generados por Terraform del control de versiones.
+# ============================================================
+
+# Archivos de estado de Terraform (NUNCA subir)
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+
+# Variables con valores reales (pueden contener secretos)
+*.tfvars
+!terraform.tfvars.example
+
+# Directorio de plugins y modulos descargados
+.terraform/
+.terraform.lock.hcl
+
+# Archivos de plan (pueden contener datos sensibles)
+*.tfplan
+*.plan
+plan.out
+plan.json
+
+# Archivos de log y crash
+crash.log
+crash.*.log
+*.log
+
+# Archivos de override (configuraciones locales)
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Archivos de entorno con credenciales
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*.cer
+secrets.json
+credentials.json
+
+# Archivos de IDE y sistema
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Archivos de pruebas (binarios Go)
+tests/vendor/
+tests/*.test
+
+# Reportes de seguridad generados
+checkov-results/
+tfsec-results/
+trivy-results/
