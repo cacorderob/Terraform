@@ -86,7 +86,7 @@ variable "subnet_address_prefix" {
 variable "vm_size" {
   description = "Tamaño de la máquina virtual de Azure (SKU)."
   type        = string
-  default     = "Standard_B2ats_v2"
+  default     = "Standard_B2ms"
 
   validation {
     condition     = can(regex("^Standard_", var.vm_size))
