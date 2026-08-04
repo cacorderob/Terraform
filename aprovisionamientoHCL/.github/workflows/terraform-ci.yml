@@ -12,9 +12,10 @@ on:
   workflow_dispatch:
 
 env:
-  TF_VERSION: "1.7.5"
-  TFLINT_VERSION: "v0.50.3"
-  WORKING_DIR: "."
+  TF_VERSION: "1.9.8"
+  TFLINT_VERSION: "v0.53.0"
+  # Directorio donde reside el código Terraform dentro del repositorio
+  WORKING_DIR: "aprovisionamientoHCL"
 
 permissions:
   contents: read
@@ -32,10 +33,10 @@ jobs:
 
     steps:
       - name: Checkout del repositorio
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2
 
       - name: Configurar Terraform ${{ env.TF_VERSION }}
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v3.1.2
         with:
           terraform_version: ${{ env.TF_VERSION }}
           cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
@@ -45,7 +46,7 @@ jobs:
         run: terraform fmt -check -recursive -diff
         continue-on-error: false
 
-      - name: Inicializar Terraform (solo backend)
+      - name: Inicializar Terraform (sin conectar backend remoto)
         id: init
         run: terraform init -backend=false
 
@@ -64,7 +65,7 @@ jobs:
 
     steps:
       - name: Checkout del repositorio
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2
 
       - name: Configurar TFLint ${{ env.TFLINT_VERSION }}
         uses: terraform-linters/setup-tflint@v4
@@ -85,12 +86,12 @@ jobs:
 
     steps:
       - name: Checkout del repositorio
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2
 
       - name: Ejecutar Checkov (IaC Security Scanner)
         uses: bridgecrewio/checkov-action@v12
         with:
-          directory: .
+          directory: ${{ env.WORKING_DIR }}
           framework: terraform
           output_format: sarif
           output_file_path: checkov-results.sarif
@@ -100,30 +101,30 @@ jobs:
             CKV2_AZURE_1
 
       - name: Subir resultados SARIF a GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: checkov-results.sarif
           category: checkov
 
-  # ─── JOB 4: Escaneo de secretos (truffleHog) ─────────────────
+  # ─── JOB 4: Escaneo de secretos (TruffleHog) ─────────────────
   secret-scan:
     name: "Escaneo de Secretos"
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout del repositorio
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2
         with:
           fetch-depth: 0
 
-      - name: TruffleHog — Detección de secretos
-        uses: trufflesecurity/trufflehog@main
+      - name: TruffleHog — Detección de secretos en el historial completo
+        uses: trufflesecurity/trufflehog@v3.88.18
         with:
           path: ./
-          base: ${{ github.event.repository.default_branch }}
-          head: HEAD
-          extra_args: --debug --only-verified
+          # Sin base/head: TruffleHog escanea todos los commits del historial.
+          # Evita el error "BASE and HEAD commits are the same" en push directos a main.
+          extra_args: --only-verified
 
   # ─── JOB 5: Análisis de dependencias (SCA) ───────────────────
   dependency-scan:
@@ -132,26 +133,26 @@ jobs:
 
     steps:
       - name: Checkout del repositorio
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2
 
       - name: Trivy — Escaneo de vulnerabilidades en archivos de configuración
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: "config"
-          scan-ref: "."
+          scan-ref: ${{ env.WORKING_DIR }}
           format: "sarif"
           output: "trivy-results.sarif"
           severity: "CRITICAL,HIGH"
           exit-code: "0"
 
       - name: Subir resultados Trivy a GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: "trivy-results.sarif"
           category: trivy
 
-  # ─── JOB 6: Terraform Plan (solo con credenciales) ───────────
+  # ─── JOB 6: Terraform Plan (solo con credenciales disponibles) ─
   terraform-plan:
     name: "Terraform Plan"
     runs-on: ubuntu-latest
@@ -159,7 +160,7 @@ jobs:
       - tflint
       - checkov
       - secret-scan
-    # Solo ejecutar en PRs o push a main con el secreto disponible
+    # Solo ejecutar en PRs o push a main
     if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     defaults:
       run:
@@ -167,10 +168,10 @@ jobs:
 
     steps:
       - name: Checkout del repositorio
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2
 
       - name: Configurar Terraform ${{ env.TF_VERSION }}
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v3.1.2
         with:
           terraform_version: ${{ env.TF_VERSION }}
           cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
@@ -183,7 +184,7 @@ jobs:
         id: plan
         run: |
           terraform plan \
-            -var="resource_group_name=${{ vars.RESOURCE_GROUP_NAME }}" \
+            -var="resource_group_name=${{ vars.RESOURCE_GROUP_NAME || 'rg-vm-sqlserver-prod' }}" \
             -var="environment=production" \
             -var="project_name=carlos-pruebas" \
             -no-color \
@@ -215,7 +216,7 @@ jobs:
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `## 📋 Resultado del Terraform Plan\n\`\`\`terraform\n${truncated}\n\`\`\`\n\n> ⚠️ El **apply** debe ejecutarse **manualmente** desde HCP Terraform.`
+              body: `## Resultado del Terraform Plan\n\`\`\`terraform\n${truncated}\n\`\`\`\n\n> El **apply** debe ejecutarse **manualmente** desde HCP Terraform.`
             });
 
       - name: Limpiar archivos de plan (no subir al repo)
