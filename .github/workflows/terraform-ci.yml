@@ -1,0 +1,224 @@
+name: Terraform CI — Azure VM + SQL Server
+
+on:
+  push:
+    branches:
+      - main
+      - 'feature/**'
+      - 'fix/**'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  TF_VERSION: "1.9.8"
+  TFLINT_VERSION: "v0.53.0"
+  # Directorio donde reside el código Terraform dentro del repositorio
+  WORKING_DIR: "aprovisionamientoHCL"
+
+permissions:
+  contents: read
+  security-events: write
+  pull-requests: write
+
+jobs:
+  # ─── JOB 1: Formato y validación básica ─────────────────────
+  terraform-fmt-validate:
+    name: "Formato y Validación"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.WORKING_DIR }}
+
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4.2.2
+
+      - name: Configurar Terraform ${{ env.TF_VERSION }}
+        uses: hashicorp/setup-terraform@v3.1.2
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+
+      - name: Verificar formato del código (terraform fmt)
+        id: fmt
+        run: terraform fmt -check -recursive -diff
+        continue-on-error: false
+
+      - name: Inicializar Terraform (sin conectar backend remoto)
+        id: init
+        run: terraform init -backend=false
+
+      - name: Validar configuración (terraform validate)
+        id: validate
+        run: terraform validate -no-color
+
+  # ─── JOB 2: Análisis estático con TFLint ─────────────────────
+  tflint:
+    name: "TFLint — Análisis Estático"
+    runs-on: ubuntu-latest
+    needs: terraform-fmt-validate
+    defaults:
+      run:
+        working-directory: ${{ env.WORKING_DIR }}
+
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4.2.2
+
+      - name: Configurar TFLint ${{ env.TFLINT_VERSION }}
+        uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: ${{ env.TFLINT_VERSION }}
+
+      - name: Inicializar TFLint (descargar plugins)
+        run: tflint --init
+
+      - name: Ejecutar TFLint
+        run: tflint --format=compact --config=.tflint.hcl
+
+  # ─── JOB 3: Escaneo de seguridad con Checkov (SAST) ─────────
+  checkov:
+    name: "Checkov — Seguridad SAST"
+    runs-on: ubuntu-latest
+    needs: terraform-fmt-validate
+
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4.2.2
+
+      - name: Ejecutar Checkov (IaC Security Scanner)
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: ${{ env.WORKING_DIR }}
+          framework: terraform
+          output_format: sarif
+          output_file_path: checkov-results.sarif
+          soft_fail: true
+          skip_check: >-
+            CKV_AZURE_130,
+            CKV2_AZURE_1
+
+      - name: Subir resultados SARIF a GitHub Security
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: checkov-results.sarif
+          category: checkov
+
+  # ─── JOB 4: Escaneo de secretos (TruffleHog) ─────────────────
+  secret-scan:
+    name: "Escaneo de Secretos"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: TruffleHog — Detección de secretos en el historial completo
+        uses: trufflesecurity/trufflehog@v3.88.18
+        with:
+          path: ./
+          # Sin base/head: TruffleHog escanea todos los commits del historial.
+          # Evita el error "BASE and HEAD commits are the same" en push directos a main.
+          extra_args: --only-verified
+
+  # ─── JOB 5: Análisis de dependencias (SCA) ───────────────────
+  dependency-scan:
+    name: "SCA — Análisis de Dependencias"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4.2.2
+
+      - name: Trivy — Escaneo de vulnerabilidades en archivos de configuración
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: "config"
+          scan-ref: ${{ env.WORKING_DIR }}
+          format: "sarif"
+          output: "trivy-results.sarif"
+          severity: "CRITICAL,HIGH"
+          exit-code: "0"
+
+      - name: Subir resultados Trivy a GitHub Security
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: "trivy-results.sarif"
+          category: trivy
+
+  # ─── JOB 6: Terraform Plan (solo con credenciales disponibles) ─
+  terraform-plan:
+    name: "Terraform Plan"
+    runs-on: ubuntu-latest
+    needs:
+      - tflint
+      - checkov
+      - secret-scan
+    # Solo ejecutar en PRs o push a main
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    defaults:
+      run:
+        working-directory: ${{ env.WORKING_DIR }}
+
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4.2.2
+
+      - name: Configurar Terraform ${{ env.TF_VERSION }}
+        uses: hashicorp/setup-terraform@v3.1.2
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+
+      - name: Terraform Init
+        id: init
+        run: terraform init
+
+      - name: Terraform Plan (sin apply automático)
+        id: plan
+        run: |
+          terraform plan \
+            -var="resource_group_name=${{ vars.RESOURCE_GROUP_NAME || 'rg-vm-sqlserver-prod' }}" \
+            -var="environment=production" \
+            -var="project_name=carlos-pruebas" \
+            -no-color \
+            -out=plan.tfplan 2>&1 | tee plan-output.txt
+        env:
+          ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+          ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+          ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+          TF_VAR_admin_username: ${{ secrets.TF_VAR_ADMIN_USERNAME }}
+          TF_VAR_admin_password: ${{ secrets.TF_VAR_ADMIN_PASSWORD }}
+          TF_VAR_sql_admin_login: ${{ secrets.TF_VAR_SQL_ADMIN_LOGIN }}
+          TF_VAR_sql_admin_password: ${{ secrets.TF_VAR_SQL_ADMIN_PASSWORD }}
+        continue-on-error: true
+
+      - name: Comentar resultado del Plan en el PR
+        uses: actions/github-script@v7
+        if: github.event_name == 'pull_request'
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const planOutput = fs.readFileSync('plan-output.txt', 'utf8');
+            const truncated = planOutput.length > 65000
+              ? planOutput.substring(0, 65000) + '\n... [salida truncada]'
+              : planOutput;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## Resultado del Terraform Plan\n\`\`\`terraform\n${truncated}\n\`\`\`\n\n> El **apply** debe ejecutarse **manualmente** desde HCP Terraform.`
+            });
+
+      - name: Limpiar archivos de plan (no subir al repo)
+        if: always()
+        run: rm -f plan.tfplan plan-output.txt
