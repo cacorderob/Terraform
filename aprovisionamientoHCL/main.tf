@@ -219,8 +219,8 @@ resource "azurerm_mssql_database" "main" {
 
   # Capacidad mínima requerida por el SKU serverless GP_S_Gen5_*.
   # Azure exige min_capacity > 0 (mínimo 0.5 vCores) cuando auto-pause está habilitado.
-  min_capacity                          = 0.5
-  auto_pause_delay_in_minutes           = 60
+  min_capacity                = 0.5
+  auto_pause_delay_in_minutes = 60
 
   # Cifrado de datos en reposo habilitado (TDE - Transparent Data Encryption)
   transparent_data_encryption_enabled = true
