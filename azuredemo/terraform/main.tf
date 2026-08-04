@@ -84,7 +84,7 @@ resource "azurerm_network_interface" "nic" {
     private_ip_address_allocation = "Dynamic"
 
     # ✅ This is the insecure part for the demo (Public IP attached)
-    public_ip_address_id          = azurerm_public_ip.pip.id
+    public_ip_address_id = azurerm_public_ip.pip.id
   }
 }
 
