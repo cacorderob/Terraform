@@ -138,6 +138,10 @@ resource "azurerm_windows_virtual_machine" "main" {
   location            = azurerm_resource_group.main.location
   size                = var.vm_size
 
+  # computer_name debe tener máximo 15 caracteres (límite de Windows).
+  # Se usa un nombre corto derivado del sufijo aleatorio del SQL Server.
+  computer_name = "vm-${random_id.sql_suffix.hex}"
+
   # Credenciales sensibles: jamás se almacenan en texto plano en el código
   admin_username = var.admin_username
   admin_password = var.admin_password
@@ -212,6 +216,11 @@ resource "azurerm_mssql_database" "main" {
   name      = "sqldb-${var.project_name}-${var.environment}"
   server_id = azurerm_mssql_server.main.id
   sku_name  = var.sql_database_sku
+
+  # Capacidad mínima requerida por el SKU serverless GP_S_Gen5_*.
+  # Azure exige min_capacity > 0 (mínimo 0.5 vCores) cuando auto-pause está habilitado.
+  min_capacity                          = 0.5
+  auto_pause_delay_in_minutes           = 60
 
   # Cifrado de datos en reposo habilitado (TDE - Transparent Data Encryption)
   transparent_data_encryption_enabled = true
