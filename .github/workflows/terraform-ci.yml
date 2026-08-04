@@ -174,11 +174,18 @@ jobs:
         uses: hashicorp/setup-terraform@v3.1.2
         with:
           terraform_version: ${{ env.TF_VERSION }}
-          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+          # TF_TOKEN_app_terraform_io se usa como alternativa a cli_config_credentials_token
+          # cuando el secreto TF_API_TOKEN no está disponible en GitHub Actions.
+          # Si TF_API_TOKEN está configurado en el repo, descomenta la línea siguiente:
+          # cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
 
       - name: Terraform Init
         id: init
+        # TF_TOKEN_app_terraform_io es la variable de entorno estándar que Terraform
+        # usa para autenticarse con app.terraform.io sin necesitar archivo de credenciales.
         run: terraform init
+        env:
+          TF_TOKEN_app_terraform_io: ${{ secrets.TF_API_TOKEN }}
 
       - name: Terraform Plan (sin apply automático)
         id: plan
@@ -190,6 +197,7 @@ jobs:
             -no-color \
             -out=plan.tfplan 2>&1 | tee plan-output.txt
         env:
+          TF_TOKEN_app_terraform_io: ${{ secrets.TF_API_TOKEN }}
           ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
           ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
           ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
