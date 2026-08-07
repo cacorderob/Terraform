@@ -95,7 +95,7 @@ sincronizar correctamente con el IBM i.
 - Repositorio Terraform ya tiene `.github/workflows/` con `terraform-ci.yml` como referencia de estructura de workflows.
 - El workflow nuevo debe filtrar `paths: ["DemoIBM/**"]` para no interferir con los workflows de Terraform existentes.
 
-**Status:** `[ ] pending`
+**Status:** `[x] done`
 
 ---
 
@@ -130,7 +130,7 @@ el CL de compilación `COMPILDEMO` remotamente.
   - `IBMI_SSH_PRIVATE_KEY` → clave privada RSA/ED25519
 - Guía para generar el par de claves: `ssh-keygen -t ed25519 -C "github-actions-demo"`.
 
-**Status:** `[ ] pending`
+**Status:** `[x] done`
 
 ---
 
@@ -161,7 +161,7 @@ end-to-end funciona ante un cambio en el repositorio.
 - Los spools en IBM i se ven con `WRKSPLF USER(CACORDERO1)`.
 - Si `CRTSQLRPGI` falla, revisar `WRKMSGQ CACORDERO1` o el joblog del job de compilación.
 
-**Status:** `[ ] pending`
+**Status:** `[x] done`
 
 ---
 
