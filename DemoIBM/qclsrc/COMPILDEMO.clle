@@ -1,0 +1,97 @@
+/* ===================================================================  */
+/* PROGRAMA : COMPILDEMO                                                 */
+/* TIPO     : CL Program                                                 */
+/* LIBRERIA : CACORDERO1                                                 */
+/* DESC     : Compila los objetos del Demo de Reporte de Jobs Activos    */
+/*            Orden: ACTJOBP (CRTPRTF) -> ACTJOBR (CRTSQLRPGI)          */
+/*            Copia fuentes del IFS al source file antes de compilar     */
+/* AUTOR    : CACORDERO                                                  */
+/* ===================================================================  */
+PGM
+
+  DCL VAR(&LIB) TYPE(*CHAR) LEN(10) VALUE('CACORDERO1')
+  DCL VAR(&IFS) TYPE(*CHAR) LEN(80) VALUE('/home/CACORDERO1/DemoIBM')
+  DCL VAR(&MSG) TYPE(*CHAR) LEN(100)
+
+  /* ----------------------------------------------------------------- */
+  /* Agregar libreria a la lista de bibliotecas                         */
+  /* ----------------------------------------------------------------- */
+  ADDLIBLE LIB(&LIB) POSITION(*FIRST)
+  MONMSG MSGID(CPF2103)             /* Ignorar si ya esta en la lista  */
+
+  /* ----------------------------------------------------------------- */
+  /* PASO 1: Copiar fuentes del IFS a los source files de la libreria  */
+  /* ----------------------------------------------------------------- */
+  CHGVAR VAR(&MSG) VALUE('Copiando fuentes del IFS a la libreria...')
+  SNDPGMMSG MSGID(CPF9897) MSGF(QSYS/QCPFMSG) +
+            MSGDTA(&MSG) MSGTYPE(*INFO)
+
+  CPYFRMSTMF FROMSTMF('/home/CACORDERO1/DemoIBM/qddssrc/ACTJOBP.prtf') +
+             TOMBR('/QSYS.LIB/CACORDERO1.LIB/QDDSSRC.FILE/ACTJOBP.MBR') +
+             MBROPT(*REPLACE) CVTDTA(*NONE)
+
+  CPYFRMSTMF FROMSTMF('/home/CACORDERO1/DemoIBM/qrpglesrc/ACTJOBR.sqlrpgle') +
+             TOMBR('/QSYS.LIB/CACORDERO1.LIB/QRPGLESRC.FILE/ACTJOBR.MBR') +
+             MBROPT(*REPLACE) CVTDTA(*NONE)
+
+  /* ----------------------------------------------------------------- */
+  /* PASO 2: Limpiar objetos anteriores                                 */
+  /* ----------------------------------------------------------------- */
+  DLTOBJ OBJ(&LIB/ACTJOBP) OBJTYPE(*FILE)
+  MONMSG MSGID(CPF2105)             /* Ignorar si no existe            */
+
+  DLTOBJ OBJ(&LIB/ACTJOBR) OBJTYPE(*PGM)
+  MONMSG MSGID(CPF2105)             /* Ignorar si no existe            */
+
+  /* ----------------------------------------------------------------- */
+  /* PASO 3: Compilar ACTJOBP (Printer File DDS — primero)             */
+  /* ----------------------------------------------------------------- */
+  CHGVAR VAR(&MSG) VALUE('Compilando ACTJOBP (PRTF)...')
+  SNDPGMMSG MSGID(CPF9897) MSGF(QSYS/QCPFMSG) +
+            MSGDTA(&MSG) MSGTYPE(*INFO)
+
+  CRTPRTF FILE(&LIB/ACTJOBP) +
+           SRCFILE(&LIB/QDDSSRC) +
+           SRCMBR(ACTJOBP) +
+           TEXT('Reporte de Jobs Activos')
+
+  /* ----------------------------------------------------------------- */
+  /* PASO 4: Compilar ACTJOBR (SQL RPG IV — segundo)                   */
+  /* ----------------------------------------------------------------- */
+  CHGVAR VAR(&MSG) VALUE('Compilando ACTJOBR (SQLRPG)...')
+  SNDPGMMSG MSGID(CPF9897) MSGF(QSYS/QCPFMSG) +
+            MSGDTA(&MSG) MSGTYPE(*INFO)
+
+  CRTSQLRPGI OBJ(&LIB/ACTJOBR) +
+             SRCFILE(&LIB/QRPGLESRC) +
+             SRCMBR(ACTJOBR) +
+             COMMIT(*NONE) +
+             OBJTYPE(*PGM) +
+             OPTION(*EVENTF) +
+             DBGVIEW(*SOURCE) +
+             TEXT('Reporte de Jobs Activos')
+
+  /* ----------------------------------------------------------------- */
+  /* Confirmacion final                                                 */
+  /* ----------------------------------------------------------------- */
+  SNDPGMMSG MSG('COMPILDEMO: Compilacion exitosa. ACTJOBP y ACTJOBR +
+               listos en CACORDERO1') +
+            MSGTYPE(*COMP)
+
+  GOTO CMDLBL(FIN)
+
+/* ------------------------------------------------------------------- */
+/* Manejo de error general                                              */
+/* ------------------------------------------------------------------- */
+ERROR:
+  MONMSG MSGID(CPF0000)
+  CHGVAR VAR(&MSG) VALUE('COMPILDEMO ERROR: Fallo la compilacion. +
+                          Revise el joblog.')
+  SNDPGMMSG MSGID(CPF9897) MSGF(QSYS/QCPFMSG) +
+            MSGDTA(&MSG) MSGTYPE(*DIAG)
+
+FIN:
+  RMVLIBLE LIB(&LIB)
+  MONMSG MSGID(CPF2108)             /* Ignorar si ya no esta           */
+
+ENDPGM

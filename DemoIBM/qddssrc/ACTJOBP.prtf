@@ -1,0 +1,74 @@
+     A*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+     A* ARCHIVO : ACTJOBP
+     A* TIPO    : Printer File (PRTF)
+     A* LIBRERIA: CACORDERO1
+     A* DESC    : Reporte de Jobs Activos - formato impreso
+     A*           Columnas: JOB_NAME, JOB_USER, JOB_TYPE, JOB_STATUS,
+     A*                     CPU_TIME, CPU_PCT, FUNCTION_TYPE, FUNCTION
+     A* AUTOR   : CACORDERO
+     A*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+     A                                      PAGESIZE(66 132)
+     A                                      INDARA
+     A*
+     A*------------------------------------------------------------------
+     A* CABECERA: Titulo, fecha y linea separadora (salto de pagina)
+     A*------------------------------------------------------------------
+     A          R CABECERA
+     A                                      SKIPB(1)
+     A                                      SPACEA(1)
+     A                                 1 45'REPORTE DE JOBS ACTIVOS'
+     A                                      HIGHLIGHT
+     A                                 1 100'FECHA:'
+     A            RFECHA          L    1 107
+     A                                      DATFMT(*ISO)
+     A                                 2  1'----------------------------------------------+
+     A                                      ----------------------------------------------+
+     A                                      ------------------------------------'
+     A*
+     A*------------------------------------------------------------------
+     A* SUBTIT: Encabezados de columna
+     A*------------------------------------------------------------------
+     A          R SUBTIT
+     A                                      SPACEA(1)
+     A                                 3  1'JOB NAME                    '
+     A                                      HIGHLIGHT
+     A                                 3 30'USER      '
+     A                                      HIGHLIGHT
+     A                                 3 41'TP'
+     A                                      HIGHLIGHT
+     A                                 3 44'STATUS    '
+     A                                      HIGHLIGHT
+     A                                 3 55'CPU TIME    '
+     A                                      HIGHLIGHT
+     A                                 3 68'CPU %    '
+     A                                      HIGHLIGHT
+     A                                 3 78'FT'
+     A                                      HIGHLIGHT
+     A                                 3 81'FUNCTION  '
+     A                                      HIGHLIGHT
+     A                                 4  1'----------------------------+
+     A                                      ----------  -- ----------  +
+     A                                      ------------ ---------  --+
+     A                                      ----------'
+     A*
+     A*------------------------------------------------------------------
+     A* DETALLE: Una linea por job activo
+     A*------------------------------------------------------------------
+     A          R DETALLE
+     A                                      SPACEA(1)
+     A            RJNAME         28A    5  1
+     A                                      TEXT('Job Name')
+     A            RJUSER         10A    5 30
+     A                                      TEXT('Job User')
+     A            RJTYPE          2A    5 41
+     A                                      TEXT('Job Type')
+     A            RJSTAT         10A    5 44
+     A                                      TEXT('Job Status')
+     A            RCPUT          12S 0  5 55EDTCDE(1)
+     A                                      TEXT('CPU Time')
+     A            RCPUPC          9S 2  5 68EDTCDE(1)
+     A                                      TEXT('CPU Percentage')
+     A            RFTYPE          2A    5 78
+     A                                      TEXT('Function Type')
+     A            RFUNC          10A    5 81
+     A                                      TEXT('Function')

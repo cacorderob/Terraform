@@ -1,0 +1,131 @@
+name: "IBM i Deploy — DemoIBM Active Jobs Report"
+
+# ---------------------------------------------------------------
+# DISPARADORES DEL PIPELINE
+# Se ejecuta cuando hay cambios en DemoIBM/ en la rama main.
+#
+# SECRETS REQUERIDOS en el repositorio GitHub:
+#   IBMI_HOST             → pub400.com
+#   IBMI_USER             → CACORDERO1
+#   IBMI_SSH_PRIVATE_KEY  → Clave privada ed25519 (sin passphrase)
+#
+# Para generarlos:
+#   ssh-keygen -t ed25519 -C "github-actions-demo" -f ~/.ssh/ibmi_github_demo
+#   Luego agregar ~/.ssh/ibmi_github_demo.pub a authorized_keys en PUB400.COM
+#   Pegar el contenido de ~/.ssh/ibmi_github_demo como secret IBMI_SSH_PRIVATE_KEY
+# ---------------------------------------------------------------
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "DemoIBM/**"
+      - ".github/workflows/ibmi-deploy-demo.yml"
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Razón para ejecución manual"
+        required: false
+        default: "Despliegue manual por operador"
+
+# ---------------------------------------------------------------
+# PERMISOS MÍNIMOS
+# ---------------------------------------------------------------
+permissions:
+  contents: read
+
+jobs:
+  # =============================================================
+  # JOB 1: DESPLIEGUE AL IFS Y COMPILACIÓN EN IBM i
+  # =============================================================
+  deploy-ibmi:
+    name: "Deploy a IBM i PUB400.COM"
+    runs-on: ubuntu-latest
+
+    steps:
+      # -----------------------------------------------------------
+      # 1. Checkout del repositorio
+      # -----------------------------------------------------------
+      - name: "Checkout del repositorio"
+        uses: actions/checkout@v4
+
+      # -----------------------------------------------------------
+      # 2. Configurar clave SSH
+      # -----------------------------------------------------------
+      - name: "Configurar clave SSH para PUB400.COM"
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.IBMI_SSH_PRIVATE_KEY }}" > ~/.ssh/ibmi_key
+          chmod 600 ~/.ssh/ibmi_key
+          ssh-keyscan -H "${{ secrets.IBMI_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
+          echo "✅ Clave SSH configurada" >> $GITHUB_STEP_SUMMARY
+
+      # -----------------------------------------------------------
+      # 3. Crear directorios en el IFS de IBM i
+      # -----------------------------------------------------------
+      - name: "Crear directorios en IFS de IBM i"
+        run: |
+          echo "## 📁 Crear directorios en IFS" >> $GITHUB_STEP_SUMMARY
+          ssh -i ~/.ssh/ibmi_key -o StrictHostKeyChecking=no \
+              "${{ secrets.IBMI_USER }}@${{ secrets.IBMI_HOST }}" \
+              "mkdir -p /home/${{ secrets.IBMI_USER }}/DemoIBM/qrpglesrc \
+                         /home/${{ secrets.IBMI_USER }}/DemoIBM/qddssrc \
+                         /home/${{ secrets.IBMI_USER }}/DemoIBM/qclsrc"
+          echo "✅ Directorios IFS creados" >> $GITHUB_STEP_SUMMARY
+
+      # -----------------------------------------------------------
+      # 4. Copiar fuentes al IFS vía SFTP
+      # -----------------------------------------------------------
+      - name: "Copiar fuentes RPG, DDS y CL al IFS"
+        run: |
+          echo "## 📤 Copiando fuentes al IFS" >> $GITHUB_STEP_SUMMARY
+
+          # Copiar printer file DDS
+          sftp -i ~/.ssh/ibmi_key -o StrictHostKeyChecking=no \
+               "${{ secrets.IBMI_USER }}@${{ secrets.IBMI_HOST }}" <<EOF
+          put DemoIBM/qddssrc/ACTJOBP.prtf /home/${{ secrets.IBMI_USER }}/DemoIBM/qddssrc/ACTJOBP.prtf
+          put DemoIBM/qrpglesrc/ACTJOBR.sqlrpgle /home/${{ secrets.IBMI_USER }}/DemoIBM/qrpglesrc/ACTJOBR.sqlrpgle
+          put DemoIBM/qclsrc/COMPILDEMO.clle /home/${{ secrets.IBMI_USER }}/DemoIBM/qclsrc/COMPILDEMO.clle
+          bye
+          EOF
+
+          echo "✅ Fuentes copiados al IFS:" >> $GITHUB_STEP_SUMMARY
+          echo "  - /home/${{ secrets.IBMI_USER }}/DemoIBM/qddssrc/ACTJOBP.prtf" >> $GITHUB_STEP_SUMMARY
+          echo "  - /home/${{ secrets.IBMI_USER }}/DemoIBM/qrpglesrc/ACTJOBR.sqlrpgle" >> $GITHUB_STEP_SUMMARY
+          echo "  - /home/${{ secrets.IBMI_USER }}/DemoIBM/qclsrc/COMPILDEMO.clle" >> $GITHUB_STEP_SUMMARY
+
+      # -----------------------------------------------------------
+      # 5. Compilar el CL COMPILDEMO (primera vez, si no existe)
+      #    y luego llamarlo para compilar ACTJOBP + ACTJOBR
+      # -----------------------------------------------------------
+      - name: "Compilar y ejecutar COMPILDEMO en IBM i"
+        run: |
+          echo "## 🔨 Compilación en IBM i" >> $GITHUB_STEP_SUMMARY
+
+          ssh -i ~/.ssh/ibmi_key -o StrictHostKeyChecking=no \
+              "${{ secrets.IBMI_USER }}@${{ secrets.IBMI_HOST }}" \
+              "system \"CPYFRMSTMF FROMSTMF('/home/${{ secrets.IBMI_USER }}/DemoIBM/qclsrc/COMPILDEMO.clle') TOMBR('/QSYS.LIB/CACORDERO1.LIB/QCLSRC.FILE/COMPILDEMO.MBR') MBROPT(*REPLACE) CVTDTA(*NONE)\" && \
+               system \"CRTCLPGM PGM(CACORDERO1/COMPILDEMO) SRCFILE(CACORDERO1/QCLSRC) SRCMBR(COMPILDEMO) REPLACE(*YES)\" && \
+               system \"CALL PGM(CACORDERO1/COMPILDEMO)\""
+
+          echo "✅ Compilación ejecutada. Verificar en IBM i:" >> $GITHUB_STEP_SUMMARY
+          echo "  - \`WRKOBJ CACORDERO1/ACTJOBP OBJTYPE(*FILE)\`" >> $GITHUB_STEP_SUMMARY
+          echo "  - \`WRKOBJ CACORDERO1/ACTJOBR OBJTYPE(*PGM)\`" >> $GITHUB_STEP_SUMMARY
+
+      # -----------------------------------------------------------
+      # 6. Resumen final
+      # -----------------------------------------------------------
+      - name: "Resumen del despliegue"
+        if: always()
+        run: |
+          echo "## 📋 Resumen DemoIBM Deploy" >> $GITHUB_STEP_SUMMARY
+          echo "| Parámetro | Valor |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| Servidor | \`pub400.com\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Librería | \`CACORDERO1\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Programa | \`ACTJOBR\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Printer File | \`ACTJOBP\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| IFS destino | \`/home/CACORDERO1/DemoIBM/\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "> Para ejecutar el reporte: \`CALL PGM(CACORDERO1/ACTJOBR)\` y ver resultado con \`WRKSPLF\`" >> $GITHUB_STEP_SUMMARY
